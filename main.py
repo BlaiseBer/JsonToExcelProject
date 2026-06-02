@@ -83,44 +83,35 @@ def creer_donnee_brut():
 def importer_sur_le_drive(path, nom):
     creds = get_credentials()
 
-    LOCAL_FILE_PATH = path
-    FILE_NAME_ON_DRIVE = nom
-    PARENT_FOLDER_ID = "1XiSdGCxVyTb5xMxWU5oLBmqO1biS9fBn"  # A compléter
-
     # Define File Metadata
     file_metadata = {
-        'name': FILE_NAME_ON_DRIVE,
-        # CRITICAL: This mimeType converts the raw Excel binary into an editable Google Sheet
-        'mimeType': 'application/vnd.google-apps.spreadsheet'
+        'name': nom,
+        'mimeType': 'application/vnd.google-apps.spreadsheet',
+        'parents': "1XiSdGCxVyTb5xMxWU5oLBmqO1biS9fBn"
     }
 
-    # If you want to upload it inside a specific Google Drive folder
-    if PARENT_FOLDER_ID:
-        file_metadata['parents'] = [PARENT_FOLDER_ID]
-
-    # 4. Prepare the media payload (The actual Excel file binary)
+    # Prepare the media payload
     media = MediaFileUpload(
-        LOCAL_FILE_PATH,
+        path,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         resumable=True
     )
 
-    # 5. Execute the Upload
+    # Execute Upload
     try:
         drive_service = build('drive', 'v3', credentials=creds)
         uploaded_file = drive_service.files().create(
             body=file_metadata,
             media_body=media,
-            fields='id, webViewLink'  # Ask the API to return the unique ID and URL of the new file
+            fields='id, webViewLink'
         ).execute()
 
-        print("Successfully uploaded to Google Drive!")
-        print(f"File ID: {uploaded_file.get('id')}")
+        print("Uploaded to Google Drive")
         print(f"File URL: {uploaded_file.get('webViewLink')}")
         return uploaded_file.get('id')
 
     except Exception as e:
-        print(f"An error occurred during upload: {e}")
+        print(f"Erreur: {e}")
 
 def get_credentials():
     SCOPES = [
@@ -128,25 +119,23 @@ def get_credentials():
         'https://www.googleapis.com/auth/spreadsheets'
     ]
 
-    # Authenticate with Google Drive API
-    # 1. Look for the saved login session (token.json)
+    # Look for the saved login session (token.json)
     if os.path.exists('token.json'):
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
     else:
         creds = None
 
-    # 2. If it doesn't exist (or expired), use the Google Cloud file to log in
+    # If it doesn't exist (or has expired), use the Google Cloud file to log in
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            # NOTICE: Use the file downloaded from Google Cloud here!
             flow = InstalledAppFlow.from_client_secrets_file(
                 'client_secret.json', SCOPES
             )
             creds = flow.run_local_server(port=0)
 
-        # 3. Save the session to token.json for next time
+        # Save the session to token.json for next time
         with open('token.json', 'w') as token:
             token.write(creds.to_json())
     return creds
@@ -155,26 +144,22 @@ def creerTableauDyn(id, sheetId, NumberofLines):
     creds = get_credentials()
     service = build('sheets', 'v4', credentials=creds)
 
-    #Obtain the raw data sheets id
-
     # On demande à l'API de nous donner les métadonnées des feuilles du fichier
     spreadsheet_metadata = service.spreadsheets().get(spreadsheetId=id).execute()
     sheets = spreadsheet_metadata.get('sheets', [])
 
-    # Le premier onglet (vos données brutes converties d'Excel)
+    # on récupère l'id de la première feuille
     source_sheet_id = sheets[0]['properties']['sheetId']
 
-    # Define your Spreadsheet ID and the Sheet IDs
     SPREADSHEET_ID = id
-    SOURCE_SHEET_ID = source_sheet_id  # The ID of "RawData" tab
-    TARGET_SHEET_ID = sheetId  # The ID of "PivotSummary" tab (create this or use an existing ID)
+    SOURCE_SHEET_ID = source_sheet_id
+    TARGET_SHEET_ID = sheetId
 
     # 2. Construct the batchUpdate Payload
     body = {
         "requests": [
             {
                 "updateCells": {
-                    # Target where the Pivot Table will be placed (Top-left cell: A1)
                     "start": {
                         "sheetId": TARGET_SHEET_ID,
                         "rowIndex": 0,
@@ -185,7 +170,6 @@ def creerTableauDyn(id, sheetId, NumberofLines):
                             "values": [
                                 {
                                     "pivotTable": {
-                                        # Define the Source Data boundaries (Rows 1-6, Columns A-C)
                                         "source": {
                                             "sheetId": SOURCE_SHEET_ID,
                                             "startRowIndex": 0,
@@ -223,32 +207,31 @@ def creerTableauDyn(id, sheetId, NumberofLines):
                             ]
                         }
                     ],
-                    # Tell the API to expect a pivotTable schema in the update fields
                     "fields": "pivotTable"
                 }
             }
         ]
     }
 
-    # 3. Execute the API Request
+    # Execute the API Request
     response = service.spreadsheets().batchUpdate(
         spreadsheetId=SPREADSHEET_ID,
         body=body
     ).execute()
 
-    print("Native Google Sheets Pivot Table successfully created!")
+    print("Sheets Pivot Table created")
 
 def nvOnglet(id):
     creds = get_credentials()
     service = build('sheets', 'v4', credentials=creds)
 
-    # 1. On commence par créer un nouvel onglet pour le Pivot
+    # On commence par créer un nouvel onglet pour le Pivot
     request_body = {
         "requests": [
             {
                 "addSheet": {
                     "properties": {
-                        "title": "Pivot Summary"  # Nom du nouvel onglet
+                        "title": "Pivot Summary"
                     }
                 }
             }
@@ -264,6 +247,7 @@ def nvOnglet(id):
     # On récupère l'ID généré automatiquement par Google pour ce nouvel onglet
     return response['replies'][0]['addSheet']['properties']['sheetId']
 
+#Pour une future version
 def update_sheet(nom):
     root = tk.Tk()
     root.withdraw()
