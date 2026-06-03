@@ -10,36 +10,31 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.discovery import build
 
-def creer_donnee_brut():
-    root = tk.Tk()
-    root.withdraw()
-    path = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
+def creer_donnee_brut(path):
 
-    chemin_output = "/".join(path.split("/")[:-1])
-    nom_output = path.split("/")[-1].split(".")[0]
+    nom_output = os.path.splitext(os.path.basename(path))
+
     with open(path, 'r') as file:
         content = file.read()
     obj = json.loads(content)
 
-    NumberofLines = 1
-
+    NumberOfLines = 1
 
     wb = Workbook()
     ws = wb.active
-    ws.append(["Nom", "prix", "moyen de paiement", "date", "id_client", "type de transaction", "commentaire"])
+    ws.append(["Nom", "prix", "moyen de paiement", "date", "id_client", "nom du caissier", "type de transaction", "commentaire"])
 
     for transaction in obj["fiscal_receipts"]:
         list = transaction["line_data"]
         pay_data = transaction["payment_data"]
-        if transaction["customer"] != None:
+        cashier_name = transaction["cashier"]["full_name"]
+        if transaction["customer"] is not None:
             client_id = transaction["customer"]["bci_id"]
         else:
             client_id = "Non renseigné"
         transaction_type = transaction["type"]
         raison_annulation = transaction["cancellation_reason"]
 
-        i=0
-        price = 0
         dict = {}
         payment_method = pay_data[0]["payment_method_label"]
         payment_date = pay_data[0]["created"]
@@ -54,45 +49,45 @@ def creer_donnee_brut():
 
                 if not nom_offre in dict: #Si on trouve une nouvelle offre dans la commande, on l'ajoute au dict
                     dict[nom_offre] = [False, 0, [], 0]
-                    #[Est ce-que c'est bien une offre, le nombre de fois que l'offre a été prise,la liste des prestations différentes, prix de l'offre, ]
+                    #[Est-ce que c'est bien une offre, le nombre de fois que l'offre a été prise, la liste des prestations différentes, prix de l'offre, ]
 
                 if not(split[-1] in dict[nom_offre][2]):
                     dict[nom_offre][2].append(split[-1])
                     dict[nom_offre][3] += float(item_price)
-                    if (split[-1] == " Accueil (5m)") or (split[-1] == " Accuiel (5m)") or (split[-1] == " accueil (5m)"):  # si c'est le produit accueil, on valide que c'est bien une offre, et on ajoute le prix de accueil à l'offre
+                    if (split[-1] == " Accueil (5m)") or (split[-1] == " Accuiel (5m)") or (split[-1] == " accueil (5m)"):  # si c'est le produit accueil, on valide que c'est bien une offre, et on ajoute le prix d'Accueil à l'offre
                         dict[nom_offre][0] = True
                         dict[nom_offre][1] += 1
                 elif (split[-1] in dict[nom_offre][2]) and ((split[-1] == " Accueil") or (split[-1] == " Accuiel") or (split[-1] == " accueil")):
                     dict[nom_offre][1] += 1
             else:
-                ws.append([nom_prestation, item_price, payment_method, payment_date, client_id, transaction_type, raison_annulation])
-                NumberofLines += 1
+                ws.append([nom_prestation, item_price, payment_method, payment_date, client_id, cashier_name, transaction_type, raison_annulation])
+                NumberOfLines += 1
 
         for key in dict.keys():
-            if dict[key][0]==True:
+            if dict[key][0]:
                 nom_prestation = key
                 item_price = dict[key][3]
                 for i in range(dict[key][1]):
-                    ws.append([nom_prestation, item_price, payment_method, payment_date, client_id, transaction_type, raison_annulation])
-                    NumberofLines+=1
-    ws.auto_filter.ref = f"A1:G{ws.max_row}"
+                    ws.append([nom_prestation, item_price, payment_method, payment_date, client_id, cashier_name, transaction_type, raison_annulation])
+                    NumberOfLines+=1
+    ws.auto_filter.ref = f"A1:H{ws.max_row}"
 
-    wb.save(chemin_output + "/" + nom_output + ".xlsx")
-    return chemin_output + "/" + nom_output + ".xlsx", nom_output, NumberofLines
+    wb.save("data.xlsx")
+    return nom_output, NumberOfLines
 
-def importer_sur_le_drive(path, nom):
+def importer_sur_le_drive(nom):
     creds = get_credentials()
 
     # Define File Metadata
     file_metadata = {
         'name': nom,
         'mimeType': 'application/vnd.google-apps.spreadsheet',
-        'parents': "1XiSdGCxVyTb5xMxWU5oLBmqO1biS9fBn"
+        'parents': ["1XiSdGCxVyTb5xMxWU5oLBmqO1biS9fBn"]
     }
 
     # Prepare the media payload
     media = MediaFileUpload(
-        path,
+        "data.xlsx",
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         resumable=True
     )
@@ -108,6 +103,7 @@ def importer_sur_le_drive(path, nom):
 
         print("Uploaded to Google Drive")
         print(f"File URL: {uploaded_file.get('webViewLink')}")
+        os.remove("data.xlsx")
         return uploaded_file.get('id')
 
     except Exception as e:
@@ -140,7 +136,7 @@ def get_credentials():
             token.write(creds.to_json())
     return creds
 
-def creerTableauDyn(id, sheetId, NumberofLines):
+def creerTableauDyn(id, sheetId, NumberOfLines):
     creds = get_credentials()
     service = build('sheets', 'v4', credentials=creds)
 
@@ -173,9 +169,9 @@ def creerTableauDyn(id, sheetId, NumberofLines):
                                         "source": {
                                             "sheetId": SOURCE_SHEET_ID,
                                             "startRowIndex": 0,
-                                            "endRowIndex": NumberofLines,
+                                            "endRowIndex": NumberOfLines,
                                             "startColumnIndex": 0,
-                                            "endColumnIndex": 6
+                                            "endColumnIndex": 7
                                         },
                                         # ROW LAYOUT: Group by "Nom" (Column Index 0)
                                         "rows": [
@@ -185,7 +181,7 @@ def creerTableauDyn(id, sheetId, NumberofLines):
                                                 "showTotals": True
                                             }
                                         ],
-                                        # COLUMN LAYOUT: Group by "Transaction" (Column Index 5)
+                                        # COLUMN LAYOUT: Group by "Transaction" (Column Index 6)
                                         "columns": [
                                             {
                                                 "sourceColumnOffset": 5,
@@ -198,7 +194,7 @@ def creerTableauDyn(id, sheetId, NumberofLines):
                                             {
                                                 "summarizeFunction": "SUM",
                                                 "sourceColumnOffset": 1,
-                                                "name": "Total Sales"  # Custom header name
+                                                "name": "Ventes totales"  # Custom header name
                                             }
                                         ],
                                         "valueLayout": "HORIZONTAL"
@@ -214,7 +210,7 @@ def creerTableauDyn(id, sheetId, NumberofLines):
     }
 
     # Execute the API Request
-    response = service.spreadsheets().batchUpdate(
+    service.spreadsheets().batchUpdate(
         spreadsheetId=SPREADSHEET_ID,
         body=body
     ).execute()
@@ -247,19 +243,41 @@ def nvOnglet(id):
     # On récupère l'ID généré automatiquement par Google pour ce nouvel onglet
     return response['replies'][0]['addSheet']['properties']['sheetId']
 
-#Pour une future version
-def update_sheet(nom):
-    root = tk.Tk()
-    root.withdraw()
-    file_p = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
-    path = os.path(file_p)
-
-
 
 if __name__ == "__main__" :
-    path, nom, NumberofLines = creer_donnee_brut()
-    id = importer_sur_le_drive(path, nom)
+    root = tk.Tk()
+    root.withdraw()
+    path = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
+
+    #On crée le tableau associé aux données du json en entrée
+    nom, NumberOfLines = creer_donnee_brut(path)
+    id = importer_sur_le_drive(nom)
     sheetId = nvOnglet(id)
-    creerTableauDyn(id, sheetId, NumberofLines)
+    creerTableauDyn(id, sheetId, NumberOfLines)
+
+    #On crée le tableau associé à l'ensemble des anciennes données et des nouvelles
+
+    #On modifie le json enregistré
+
+    with open('fullData.json', 'r') as file:
+        content = file.read()
+    SavedData = json.loads(content)
+
+    with open(path, 'r') as file:
+        content = file.read()
+    NewData = json.loads(content)
+
+    for transaction in NewData["fiscal_receipts"]:
+        SavedData["fiscal_receipts"].append(transaction)
+
+    with open('fullData.json', 'w') as f:
+        json.dump(SavedData, f)
+
+    #On ajoute au drive le nouveau json
+
+    nom, NumberOfLines = creer_donnee_brut("fullData.json")
+    id = importer_sur_le_drive(nom)
+    sheetId = nvOnglet(id)
+    creerTableauDyn(id, sheetId, NumberOfLines)
 
 
