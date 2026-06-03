@@ -1,5 +1,4 @@
 import json
-
 from google_auth_oauthlib.flow import InstalledAppFlow
 from openpyxl import Workbook
 from tkinter import filedialog
@@ -22,12 +21,12 @@ def creer_donnee_brut(path):
 
     wb = Workbook()
     ws = wb.active
-    ws.append(["Nom", "prix", "moyen de paiement", "date", "id_client", "nom du caissier", "type de transaction", "commentaire"])
+    ws.append(["Nom", "prix", "moyen de paiement", "date", "id_client", "type de transaction", "commentaire"])
 
     for transaction in obj["fiscal_receipts"]:
         list = transaction["line_data"]
         pay_data = transaction["payment_data"]
-        cashier_name = transaction["cashier"]["full_name"]
+        #cashier_name = transaction["cashier"]["full_name"]
         if transaction["customer"] is not None:
             client_id = transaction["customer"]["bci_id"]
         else:
@@ -60,7 +59,7 @@ def creer_donnee_brut(path):
                 elif (split[-1] in dict[nom_offre][2]) and ((split[-1] == " Accueil") or (split[-1] == " Accuiel") or (split[-1] == " accueil")):
                     dict[nom_offre][1] += 1
             else:
-                ws.append([nom_prestation, item_price, payment_method, payment_date, client_id, cashier_name, transaction_type, raison_annulation])
+                ws.append([nom_prestation, item_price, payment_method, payment_date, client_id, transaction_type, raison_annulation])
                 NumberOfLines += 1
 
         for key in dict.keys():
@@ -68,9 +67,9 @@ def creer_donnee_brut(path):
                 nom_prestation = key
                 item_price = dict[key][3]
                 for i in range(dict[key][1]):
-                    ws.append([nom_prestation, item_price, payment_method, payment_date, client_id, cashier_name, transaction_type, raison_annulation])
+                    ws.append([nom_prestation, item_price, payment_method, payment_date, client_id, transaction_type, raison_annulation])
                     NumberOfLines+=1
-    ws.auto_filter.ref = f"A1:H{ws.max_row}"
+    ws.auto_filter.ref = f"A1:G{ws.max_row}"
 
     wb.save("data.xlsx")
     return nom_output, NumberOfLines
@@ -171,7 +170,7 @@ def creerTableauDyn(id, sheetId, NumberOfLines):
                                             "startRowIndex": 0,
                                             "endRowIndex": NumberOfLines,
                                             "startColumnIndex": 0,
-                                            "endColumnIndex": 7
+                                            "endColumnIndex": 6
                                         },
                                         # ROW LAYOUT: Group by "Nom" (Column Index 0)
                                         "rows": [
@@ -184,7 +183,7 @@ def creerTableauDyn(id, sheetId, NumberOfLines):
                                         # COLUMN LAYOUT: Group by "Transaction" (Column Index 6)
                                         "columns": [
                                             {
-                                                "sourceColumnOffset": 5,
+                                                "sourceColumnOffset": 4,
                                                 "sortOrder": "ASCENDING",
                                                 "showTotals": True
                                             }
@@ -243,7 +242,6 @@ def nvOnglet(id):
     # On récupère l'ID généré automatiquement par Google pour ce nouvel onglet
     return response['replies'][0]['addSheet']['properties']['sheetId']
 
-
 if __name__ == "__main__" :
     root = tk.Tk()
     root.withdraw()
@@ -257,8 +255,6 @@ if __name__ == "__main__" :
 
     #On crée le tableau associé à l'ensemble des anciennes données et des nouvelles
 
-    #On modifie le json enregistré
-
     with open('fullData.json', 'r') as file:
         content = file.read()
     SavedData = json.loads(content)
@@ -267,14 +263,20 @@ if __name__ == "__main__" :
         content = file.read()
     NewData = json.loads(content)
 
-    for transaction in NewData["fiscal_receipts"]:
-        SavedData["fiscal_receipts"].append(transaction)
+    #   On vérifie que ces données ne sont pas déjà enregistrées dans fullData
 
-    with open('fullData.json', 'w') as f:
-        json.dump(SavedData, f)
+    if NewData["fiscal_receipts"][0] in SavedData["fiscal_receipts"]:
+        print("Ces données sont déjà enregistrées dans fullData !")
 
-    #On ajoute au drive le nouveau json
+    else:
+        # On modifie le json enregistré
+        for transaction in NewData["fiscal_receipts"]:
+            SavedData["fiscal_receipts"].append(transaction)
 
+        with open('fullData.json', 'w') as f:
+            json.dump(SavedData, f)
+
+    #   On ajoute au drive le nouveau json
     nom, NumberOfLines = creer_donnee_brut("fullData.json")
     id = importer_sur_le_drive(nom)
     sheetId = nvOnglet(id)
