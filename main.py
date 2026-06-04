@@ -40,7 +40,9 @@ def creer_donnee_brut(path):
         for i in range(len(list)):
             nom_offre = ""
             nom_prestation = list[i]["name_line_1"]
-            item_price = list[i]["item_price"]
+            item_price = float(list[i]["item_price"])
+
+            """
             if "-" in nom_prestation :
                 split = nom_prestation.split("-")
                 for e in split[0:-1]:
@@ -56,19 +58,48 @@ def creer_donnee_brut(path):
                     if (split[-1] == " Accueil (5m)") or (split[-1] == " Accuiel (5m)") or (split[-1] == " accueil (5m)"):  # si c'est le produit accueil, on valide que c'est bien une offre, et on ajoute le prix d'Accueil à l'offre
                         dict[nom_offre][0] = True
                         dict[nom_offre][1] += 1
-                elif (split[-1] in dict[nom_offre][2]) and ((split[-1] == " Accueil") or (split[-1] == " Accuiel") or (split[-1] == " accueil")):
+                elif (split[-1] in dict[nom_offre][2]) and ((split[-1] == " Accueil (5m)") or (split[-1] == " Accuiel (5m)") or (split[-1] == " accueil (5m)")):
                     dict[nom_offre][1] += 1
             else:
                 ws.append([nom_prestation, item_price, payment_method, payment_date, client_id, transaction_type, raison_annulation])
                 NumberOfLines += 1
+            """
 
+            if ("- Accueil (5m)" in nom_prestation) or ("- accueil (5m)" in nom_prestation) or ("- Accuiel (5m)" in nom_prestation):
+                split = nom_prestation.split("-")
+                for e in split[0:-1]:
+                    nom_offre += e
+                if not nom_offre in dict:
+                    dict[nom_offre] = [0, [split[-1]], item_price]
+            elif not("-" in nom_prestation):
+                ws.append([nom_prestation, item_price, payment_method, payment_date, client_id, transaction_type, raison_annulation])
+                NumberOfLines += 1
+
+        for i in range(len(list)):
+            nom_offre = ""
+            nom_prestation = list[i]["name_line_1"]
+            item_price = float(list[i]["item_price"])
+            if "-" in nom_prestation:
+                est_une_offre = False
+                split = nom_prestation.split("-")
+                nom_offre = split[0]
+                for e in split[0:-1]:
+                    if nom_offre in dict.keys():
+                        est_une_offre = True
+                        break
+                    nom_offre += "-" + e
+                if est_une_offre:
+                    if (split[-1] == " Accueil (5m)") or (split[-1] == " Accuiel (5m)") or (split[-1] == " accueil (5m)"):
+                        dict[nom_offre][0]+=1
+                    elif not(split[-1] in dict[nom_offre][1]):
+                        dict[nom_offre][1].append(split[-1])
+                        dict[nom_offre][2]+= item_price
         for key in dict.keys():
-            if dict[key][0]:
-                nom_prestation = key
-                item_price = dict[key][3]
-                for i in range(dict[key][1]):
-                    ws.append([nom_prestation, item_price, payment_method, payment_date, client_id, transaction_type, raison_annulation])
-                    NumberOfLines+=1
+            nom_prestation = key
+            item_price = dict[key][2]
+            for i in range(dict[key][0]):
+                ws.append([nom_prestation, item_price, payment_method, payment_date, client_id, transaction_type, raison_annulation])
+                NumberOfLines+=1
     ws.auto_filter.ref = f"A1:G{ws.max_row}"
 
     wb.save("data.xlsx")
@@ -183,7 +214,7 @@ def creerTableauDyn(id, sheetId, NumberOfLines):
                                         # COLUMN LAYOUT: Group by "Transaction" (Column Index 6)
                                         "columns": [
                                             {
-                                                "sourceColumnOffset": 4,
+                                                "sourceColumnOffset": 5,
                                                 "sortOrder": "ASCENDING",
                                                 "showTotals": True
                                             }
@@ -268,6 +299,7 @@ if __name__ == "__main__" :
     if NewData["fiscal_receipts"][0] in SavedData["fiscal_receipts"]:
         print("Ces données sont déjà enregistrées dans fullData !")
 
+    
     else:
         # On modifie le json enregistré
         for transaction in NewData["fiscal_receipts"]:
@@ -281,5 +313,4 @@ if __name__ == "__main__" :
     id = importer_sur_le_drive(nom)
     sheetId = nvOnglet(id)
     creerTableauDyn(id, sheetId, NumberOfLines)
-
 
