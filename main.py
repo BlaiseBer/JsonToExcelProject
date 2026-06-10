@@ -8,20 +8,18 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.discovery import build
+import time
+from groq import Groq
 
-def creer_donnee_brut(path):
+def creer_donnee_brut(path,categories):
 
     nom_output = os.path.splitext(os.path.basename(path))
-
+    l=[]
     with open(path, 'r') as file:
         content = file.read()
     obj = json.loads(content)
 
     NumberOfLines = 1
-
-    wb = Workbook()
-    ws = wb.active
-    ws.append(["Nom", "prix", "moyen de paiement", "date", "id_client", "type de transaction", "commentaire"])
 
     for transaction in obj["fiscal_receipts"]:
         list = transaction["line_data"]
@@ -40,39 +38,163 @@ def creer_donnee_brut(path):
         for i in range(len(list)):
             nom_offre = ""
             nom_prestation = list[i]["name_line_1"]
-            item_price = list[i]["item_price"]
-            if "-" in nom_prestation :
+            item_price = float(list[i]["item_price"])
+            if ("- Accueil (5m)" in nom_prestation) or ("- accueil (5m)" in nom_prestation) or ("- Accuiel (5m)" in nom_prestation):
                 split = nom_prestation.split("-")
                 for e in split[0:-1]:
                     nom_offre += e
+                if not nom_offre in dict:
+                    dict[nom_offre] = [0, [split[-1]], item_price]
+            elif not("-" in nom_prestation):
+                l.append([nom_prestation, item_price, payment_method, payment_date, client_id, transaction_type, raison_annulation])
 
-                if not nom_offre in dict: #Si on trouve une nouvelle offre dans la commande, on l'ajoute au dict
-                    dict[nom_offre] = [False, 0, [], 0]
-                    #[Est-ce que c'est bien une offre, le nombre de fois que l'offre a été prise, la liste des prestations différentes, prix de l'offre, ]
-
-                if not(split[-1] in dict[nom_offre][2]):
-                    dict[nom_offre][2].append(split[-1])
-                    dict[nom_offre][3] += float(item_price)
-                    if (split[-1] == " Accueil (5m)") or (split[-1] == " Accuiel (5m)") or (split[-1] == " accueil (5m)"):  # si c'est le produit accueil, on valide que c'est bien une offre, et on ajoute le prix d'Accueil à l'offre
-                        dict[nom_offre][0] = True
-                        dict[nom_offre][1] += 1
-                elif (split[-1] in dict[nom_offre][2]) and ((split[-1] == " Accueil") or (split[-1] == " Accuiel") or (split[-1] == " accueil")):
-                    dict[nom_offre][1] += 1
-            else:
-                ws.append([nom_prestation, item_price, payment_method, payment_date, client_id, transaction_type, raison_annulation])
                 NumberOfLines += 1
 
+        for i in range(len(list)):
+            nom_offre = ""
+            nom_prestation = list[i]["name_line_1"]
+            item_price = float(list[i]["item_price"])
+            if "-" in nom_prestation:
+                est_une_offre = False
+                split = nom_prestation.split("-")
+                nom_offre = split[0]
+                for e in split[0:-1]:
+                    if nom_offre in dict.keys():
+                        est_une_offre = True
+                        break
+                    nom_offre += "-" + e
+                if est_une_offre:
+                    if (split[-1] == " Accueil (5m)") or (split[-1] == " Accuiel (5m)") or (split[-1] == " accueil (5m)"):
+                        dict[nom_offre][0]+=1
+                    elif not(split[-1] in dict[nom_offre][1]):
+                        dict[nom_offre][1].append(split[-1])
+                        dict[nom_offre][2]+= item_price
         for key in dict.keys():
-            if dict[key][0]:
-                nom_prestation = key
-                item_price = dict[key][3]
-                for i in range(dict[key][1]):
-                    ws.append([nom_prestation, item_price, payment_method, payment_date, client_id, transaction_type, raison_annulation])
-                    NumberOfLines+=1
-    ws.auto_filter.ref = f"A1:G{ws.max_row}"
+            nom_prestation = key
+            item_price = dict[key][2]
+            for i in range(dict[key][0]):
+                l.append([nom_prestation, item_price, payment_method, payment_date, client_id, transaction_type, raison_annulation])
+                NumberOfLines+=1
+    with open("data.csv", "a+") as csv:
+        for x in l:
+            s=""
+            for z in x:
+                s+=str(z)+";"
+            csv.write(s[:-1]+"\n")
+    add_generated_col(categories)
+    return nom_output, NumberOfLines,
 
+
+def groq(description,categories):
+    # Le prompt système dicte les règles absolues à l'IA
+    with open("grokapikey.txt","r") as f:
+        contenu = f.readlines()
+    os.environ["GROQ_API_KEY"] = contenu
+    client = Groq()
+    prompt_systeme = f"""Tu es un expert en classification pour un centre de bien-être.
+    Tu dois classer la prestation fournie par l'utilisateur dans EXACTEMENT UNE des catégories suivantes :
+    {', '.join(categories.keys())}.
+    
+    Si tu as l'impression que le nom de la prestation est étrange il s'agit probablement d'une offre temporaire, 
+    En particulier n'attribue la catégorie "Espace Détente (Spa)" que si le nom de la prestation contient le mot "détente"
+
+    RÈGLE ABSOLUE : Tu dois répondre UNIQUEMENT par le nom exact de la catégorie. 
+    Aucun autre mot, aucune salutation, aucune ponctuation supplémentaire.
+
+"""
+
+    try:
+        # On interroge le modèle Llama 3 (le plus intelligent, version 70 milliards de paramètres)
+        reponse = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": prompt_systeme},
+                {"role": "user", "content": description}
+            ],
+            model="llama-3.1-8b-instant",
+            temperature=1  # Température à 0 = l'IA ne fait pas preuve de créativité, elle est factuelle et prévisible
+        )
+        return reponse.choices[0].message.content.strip()
+
+    except Exception as e:
+        print(f"Erreur API : {e}")
+        return "Erreur"
+
+def add_categ (prest,categories):
+    result=[]
+    for i in range(10):
+        gc=groq(prest,categories)
+        while not(gc in categories.keys()):
+            gc=groq(prest,categories)
+            print('error')
+            print(gc)
+        print(gc)
+        result.append(gc)
+    nb=0
+    indice=0
+    for i,x in enumerate(result):
+        if result.count(x)>=nb :
+            indice=i
+    categories[result[indice]].append(prest)
+    print("_"*100+str(result[indice]))
+    with open("SavedCateg.txt", "w+") as text:
+        for x in categories:
+            text.write(f"{x}$")
+            for j in range(len(categories[x])-1):
+                text.write(f"{categories[x][j]}£")
+            text.write(f"{categories[x][-1]}\n")
+
+    return result[indice]
+
+
+
+def add_generated_col(categories) :
+    l=[]
+    allcontent=[]
+    with open("data.csv", "r+") as csv:
+        allcontent=[x.replace('\n','').replace(',','').split(';') for x in csv.readlines()]
+        nc=len(allcontent[0])
+        for x in allcontent :
+            if len(x)!=nc:
+                l.append(x)
+
+    for i in range (len(l)):
+        nb=len(l[i])
+        for categ in categories:
+            if l[i][0] in categories[categ]:
+                l[i]=[l[i][0],categ]+l[i][1:]
+        if len(l[i])==nb:
+            l[i] = [l[i][0], add_categ(l[i][0],categories)] + l[i][1:]
+
+        with open("new.csv", "a+") as csv:
+                s = ""
+                for z in l[i]:
+                    s += str(z) + ";"
+                csv.write(s[:-1] + "\n")
+        print(categ)
+"""""
+    with open("new.csv", "w+") as csv:
+        nc=len(allcontent[0])
+        for x in allcontent:
+            if len(x)==nc:
+                s = ""
+                for z in x:
+                    s += str(z) + ";"
+                csv.write(s[:-1] + "\n")
+        for x in l:
+            s = ""
+            for z in x:
+                s += str(z) + ";"
+            csv.write(s[:-1] + "\n")
+"""""
+
+def into_wb(data):
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Nom","Catégorie", "Prix", "Moyen de paiement", "Date", "Id_client", "Type de transaction", "Commentaire"])
+    for x in data:
+        ws.append(x)
+    ws.auto_filter.ref = f"A1:G{ws.max_row}"
     wb.save("data.xlsx")
-    return nom_output, NumberOfLines
 
 def importer_sur_le_drive(nom):
     creds = get_credentials()
@@ -183,7 +305,7 @@ def creerTableauDyn(id, sheetId, NumberOfLines):
                                         # COLUMN LAYOUT: Group by "Transaction" (Column Index 6)
                                         "columns": [
                                             {
-                                                "sourceColumnOffset": 4,
+                                                "sourceColumnOffset": 5,
                                                 "sortOrder": "ASCENDING",
                                                 "showTotals": True
                                             }
@@ -243,12 +365,22 @@ def nvOnglet(id):
     return response['replies'][0]['addSheet']['properties']['sheetId']
 
 if __name__ == "__main__" :
+
+# On réccupère les prestations déjà associés à des catégories
+    categories={}
+    with open('SavedCateg.txt', 'r+') as file:
+        fileContent = [line.replace('\n',"") for line in file.readlines()]
+        for line in fileContent:
+            categories[line.split('$')[0]]=[]
+            for prest in line.split('$')[1].split("£"):
+                categories[line.split('$')[0]].append(prest)
+
     root = tk.Tk()
     root.withdraw()
     path = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
 
     #On crée le tableau associé aux données du json en entrée
-    nom, NumberOfLines = creer_donnee_brut(path)
+    nom, NumberOfLines = creer_donnee_brut(path,categories)
     id = importer_sur_le_drive(nom)
     sheetId = nvOnglet(id)
     creerTableauDyn(id, sheetId, NumberOfLines)
@@ -268,6 +400,7 @@ if __name__ == "__main__" :
     if NewData["fiscal_receipts"][0] in SavedData["fiscal_receipts"]:
         print("Ces données sont déjà enregistrées dans fullData !")
 
+    
     else:
         # On modifie le json enregistré
         for transaction in NewData["fiscal_receipts"]:
@@ -281,5 +414,4 @@ if __name__ == "__main__" :
     id = importer_sur_le_drive(nom)
     sheetId = nvOnglet(id)
     creerTableauDyn(id, sheetId, NumberOfLines)
-
 
