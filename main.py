@@ -10,7 +10,6 @@ from googleapiclient.http import MediaFileUpload
 from googleapiclient.discovery import build
 import time
 from groq import Groq
-from groq import Groq
 def creer_donnee_brut(path,categories):
 
     nom_output = os.path.splitext(os.path.basename(path))
@@ -75,15 +74,17 @@ def creer_donnee_brut(path,categories):
             for i in range(dict[key][0]):
                 l.append([nom_prestation, item_price, payment_method, payment_date, client_id, transaction_type, raison_annulation])
                 NumberOfLines+=1
-    with open("data.csv", "a+") as csv:
-        for x in l:
-            s=""
-            for z in x:
-                s+=str(z)+";"
-            csv.write(s[:-1]+"\n")
-    add_generated_col(categories)
-    return nom_output, NumberOfLines,
 
+    fullcsv = open("fullData.csv", "a+")
+    csv = open("data.csv", "r+")
+    for x in l:
+        s=x[0]
+        s+= add_categ(x[0], categories)
+        for z in range(1, len(x)):
+            s+=str(z).replace(',','')+";"
+        fullcsv.write(s[:-1]+"\n")
+        csv.write(s[:-1] + "\n")
+    return nom_output
 
 def groq(description,categories):
     # Le prompt système dicte les règles absolues à l'IA
@@ -145,56 +146,49 @@ def add_categ (prest,categories):
 
     return result[indice]
 
-
-
+"""
 def add_generated_col(categories) :
     l=[]
     allcontent=[]
     with open("data.csv", "r+") as csv:
-        allcontent=[x.replace('\n','').replace(',','').split(';') for x in csv.readlines()]
-        nc=len(allcontent[0])
-        for x in allcontent :
+        file=[x.replace('\n','').split(';') for x in csv.readlines()]
+        nc=len(file[0])
+        for x in file :
             if len(x)!=nc:
                 l.append(x)
+            else :
+                allcontent.append(x)
 
-    for i in range (len(l)):
-        nb=len(l[i])
+    for i in range(len(l)):
+        IsCategorized = False
         for categ in categories:
             if l[i][0] in categories[categ]:
                 l[i]=[l[i][0],categ]+l[i][1:]
-        if len(l[i])==nb:
+                IsCategorized = True
+                break
+        if not(IsCategorized):
             l[i] = [l[i][0], add_categ(l[i][0],categories)] + l[i][1:]
 
-        with open("new.csv", "a+") as csv:
-                s = ""
-                for z in l[i]:
-                    s += str(z) + ";"
-                csv.write(s[:-1] + "\n")
-        print(categ)
-"""""
-    with open("new.csv", "w+") as csv:
-        nc=len(allcontent[0])
-        for x in allcontent:
-            if len(x)==nc:
-                s = ""
-                for z in x:
-                    s += str(z) + ";"
-                csv.write(s[:-1] + "\n")
-        for x in l:
-            s = ""
-            for z in x:
-                s += str(z) + ";"
-            csv.write(s[:-1] + "\n")
-"""""
+        with open("data.csv", "w+") as csv:
+            for x in allcontent :
+                csv.write(str(x)[1:-1]+"\n")
+            for x in l :
+                csv.write(str(x)[1:-1]+"\n")
+"""
 
-def into_wb(data):
+def into_wb(nom):
+    NumberOfLines = 0
+    with open(nom + ".csv", "r+") as csv:
+        lignes = [ligne.replace('\n',"").split(";") for ligne in csv.readlines()]
     wb = Workbook()
     ws = wb.active
     ws.append(["Nom","Catégorie", "Prix", "Moyen de paiement", "Date", "Id_client", "Type de transaction", "Commentaire"])
-    for x in data:
+    for x in lignes:
+        NumberOfLines+=1
         ws.append(x)
     ws.auto_filter.ref = f"A1:G{ws.max_row}"
-    wb.save("data.xlsx")
+    wb.save(nom + ".xlsx")
+    return NumberOfLines
 
 def importer_sur_le_drive(nom):
     creds = get_credentials()
@@ -257,88 +251,7 @@ def get_credentials():
             token.write(creds.to_json())
     return creds
 
-def creerTableauDyn(id, sheetId, NumberOfLines):
-    creds = get_credentials()
-    service = build('sheets', 'v4', credentials=creds)
-
-    # On demande à l'API de nous donner les métadonnées des feuilles du fichier
-    spreadsheet_metadata = service.spreadsheets().get(spreadsheetId=id).execute()
-    sheets = spreadsheet_metadata.get('sheets', [])
-
-    # on récupère l'id de la première feuille
-    source_sheet_id = sheets[0]['properties']['sheetId']
-
-    SPREADSHEET_ID = id
-    SOURCE_SHEET_ID = source_sheet_id
-    TARGET_SHEET_ID = sheetId
-
-    # 2. Construct the batchUpdate Payload
-    body = {
-        "requests": [
-            {
-                "updateCells": {
-                    "start": {
-                        "sheetId": TARGET_SHEET_ID,
-                        "rowIndex": 0,
-                        "columnIndex": 0
-                    },
-                    "rows": [
-                        {
-                            "values": [
-                                {
-                                    "pivotTable": {
-                                        "source": {
-                                            "sheetId": SOURCE_SHEET_ID,
-                                            "startRowIndex": 0,
-                                            "endRowIndex": NumberOfLines,
-                                            "startColumnIndex": 0,
-                                            "endColumnIndex": 6
-                                        },
-                                        # ROW LAYOUT: Group by "Nom" (Column Index 0)
-                                        "rows": [
-                                            {
-                                                "sourceColumnOffset": 0,
-                                                "sortOrder": "ASCENDING",
-                                                "showTotals": True
-                                            }
-                                        ],
-                                        # COLUMN LAYOUT: Group by "Transaction" (Column Index 6)
-                                        "columns": [
-                                            {
-                                                "sourceColumnOffset": 4,
-                                                "sortOrder": "ASCENDING",
-                                                "showTotals": True
-                                            }
-                                        ],
-                                        # VALUES/AGGREGATION: Sum of "prix" (Column Index 1)
-                                        "values": [
-                                            {
-                                                "summarizeFunction": "SUM",
-                                                "sourceColumnOffset": 1,
-                                                "name": "Ventes totales"  # Custom header name
-                                            }
-                                        ],
-                                        "valueLayout": "HORIZONTAL"
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    "fields": "pivotTable"
-                }
-            }
-        ]
-    }
-
-    # Execute the API Request
-    service.spreadsheets().batchUpdate(
-        spreadsheetId=SPREADSHEET_ID,
-        body=body
-    ).execute()
-
-    print("Sheets Pivot Table created")
-
-def nvOnglet(id):
+def nvOnglet(id, nom):
     creds = get_credentials()
     service = build('sheets', 'v4', credentials=creds)
 
@@ -348,7 +261,7 @@ def nvOnglet(id):
             {
                 "addSheet": {
                     "properties": {
-                        "title": "Pivot Summary"
+                        "title": nom
                     }
                 }
             }
@@ -364,11 +277,255 @@ def nvOnglet(id):
     # On récupère l'ID généré automatiquement par Google pour ce nouvel onglet
     return response['replies'][0]['addSheet']['properties']['sheetId']
 
+def creer_analyse(tabId, NumberOfLines):
+    creds = get_credentials()
+    service = build('sheets', 'v4', credentials=creds)
+
+    # On demande à l'API de nous donner les métadonnées des feuilles du fichier
+    spreadsheet_metadata = service.spreadsheets().get(spreadsheetId=id).execute()
+    sheets = spreadsheet_metadata.get('sheets', [])
+
+    # on récupère l'id de la première feuille
+    source_sheet_id = sheets[0]['properties']['sheetId']
+
+    sheetId1 = nvOnglet(tabId, "Paramètres")
+    sheetId2 = nvOnglet(tabId, "Total de gains par prestations")
+    sheetId3 = nvOnglet(tabId, "Nombre de prestations par mots-clés")
+    sheetId4 = nvOnglet(tabId, "Total de gains par catégorie")
+
+    creer_parametres(tabId, sheetId1)
+    tableau_dyn_total_gains_prestations(creds, tabId, source_sheet_id, sheetId2, NumberOfLines)
+    tableau_dyn_nombre_prestation_mots_cles(creds, tabId, source_sheet_id, sheetId3, NumberOfLines)
+    tableau_dyn_total_gains_categorie(creds, tabId, source_sheet_id, sheetId4, NumberOfLines)
+
+def creer_parametres(id, sheetId):
+    creds = get_credentials()
+
+    ligne1 = ["Recherche par mots-clés", "", "", "", "", "", "", "", "", "", ""]
+    ligne2 = ["Mots-clés", "Vide", "Vide", "Vide", "Vide", "Vide", "Vide", "Vide", "Vide", "Vide", "Vide"]
+
+    body = {'values': [ligne1, ligne2]}
+
+    try:
+        service = build('sheets', 'v4', credentials=creds)
+
+        result = service.spreadsheets().values().update(
+            spreadsheetId=id,
+            range = "Paramètres!B1:L2",
+            valueInputOption="RAW",
+            body=body
+        ).execute()
+
+    except Exception as e:
+        print(f"Une erreur est survenue : {e}")
+
+def tableau_dyn_total_gains_prestations(creds, tabId,source_sheetId, sheetId, NumberOfLines):
+    service = build('sheets', 'v4', credentials=creds)
+
+    body = {
+        "requests": [
+            {
+                "updateCells": {
+                    "start": {
+                        "sheetId": sheetId,
+                        "rowIndex": 0,
+                        "columnIndex": 0
+                    },
+                    "rows": [
+                        {
+                            "values": [
+                                {
+                                    "pivotTable": {
+                                        "source": {
+                                            "sheetId": source_sheetId,
+                                            "startRowIndex": 0,
+                                            "endRowIndex": NumberOfLines,
+                                            "startColumnIndex": 0,
+                                            "endColumnIndex": 8
+                                        },
+                                        # ROW LAYOUT: Group by "Nom"
+                                        "rows": [
+                                            {
+                                                "sourceColumnOffset": 0,
+                                                "sortOrder": "ASCENDING",
+                                                "showTotals": True
+                                            }
+                                        ],
+                                        # COLUMN LAYOUT: Group by "Transaction"
+                                        "columns": [
+                                            {
+                                                "sourceColumnOffset": 6,
+                                                "sortOrder": "ASCENDING",
+                                                "showTotals": True
+                                            }
+                                        ],
+                                        # VALUES/AGGREGATION: Sum of "prix"
+                                        "values": [
+                                            {
+                                                "summarizeFunction": "SUM",
+                                                "sourceColumnOffset": 1,
+                                                "name": "Ventes totales"
+                                            }
+                                        ],
+                                        "valueLayout": "HORIZONTAL"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    "fields": "pivotTable"
+                }
+            }
+        ]
+    }
+
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=tabId,
+        body=body
+    ).execute()
+
+    print("Tableau croisé dynamique total gains prestations créer")
+
+def tableau_dyn_nombre_prestation_mots_cles(creds, tabId,source_sheetId, sheetId, NumberOfLines):
+
+    service = build('sheets', 'v4', credentials=creds)
+
+    body = {
+        "requests": [
+            {
+                "updateCells": {
+                    "start": {
+                        "sheetId": sheetId,
+                        "rowIndex": 0,
+                        "columnIndex": 0
+                    },
+                    "rows": [
+                        {
+                            "values": [
+                                {
+                                    "pivotTable": {
+                                        "source": {
+                                            "sheetId": source_sheetId,
+                                            "startRowIndex": 0,
+                                            "endRowIndex": NumberOfLines,
+                                            "startColumnIndex": 0,
+                                            "endColumnIndex": 8
+                                        },
+                                        # ROW LAYOUT: Group by "Type de prestation"
+                                        "rows": [
+                                            {
+                                                "sourceColumnOffset": 8,
+                                                "sortOrder": "ASCENDING",
+                                                "showTotals": True
+                                            }
+                                        ],
+                                        # COLUMN LAYOUT: Group by "moyen de paiement"
+                                        "columns": [
+                                            {
+                                                "sourceColumnOffset": 3,
+                                                "sortOrder": "ASCENDING",
+                                                "showTotals": True
+                                            }
+                                        ],
+                                        # VALUES/AGGREGATION: Count of "Type de prestation"
+                                        "values": [
+                                            {
+                                                "summarizeFunction": "COUNT",
+                                                "sourceColumnOffset": 8,
+                                                "name": "Nombre de prestations par mots-clés"
+                                            }
+                                        ],
+                                        "valueLayout": "HORIZONTAL"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    "fields": "pivotTable"
+                }
+            }
+        ]
+    }
+
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=tabId,
+        body=body
+    ).execute()
+
+    print("Tableau croisé dynamique nombre prestations mots-clés créer")
+
+def tableau_dyn_total_gains_categorie(creds, tabId, source_sheetId, sheetId, NumberOfLines):
+
+    service = build('sheets', 'v4', credentials=creds)
+
+    body = {
+        "requests": [
+            {
+                "updateCells": {
+                    "start": {
+                        "sheetId": sheetId,
+                        "rowIndex": 0,
+                        "columnIndex": 0
+                    },
+                    "rows": [
+                        {
+                            "values": [
+                                {
+                                    "pivotTable": {
+                                        "source": {
+                                            "sheetId": source_sheetId,
+                                            "startRowIndex": 0,
+                                            "endRowIndex": NumberOfLines,
+                                            "startColumnIndex": 0,
+                                            "endColumnIndex": 8
+                                        },
+                                        # ROW LAYOUT: Group by "catégorie"
+                                        "rows": [
+                                            {
+                                                "sourceColumnOffset": 1,
+                                                "sortOrder": "ASCENDING",
+                                                "showTotals": True
+                                            }
+                                        ],
+                                        # COLUMN LAYOUT: Group by "moyen de paiement"
+                                        "columns": [
+                                            {
+                                                "sourceColumnOffset": 3,
+                                                "sortOrder": "ASCENDING",
+                                                "showTotals": True
+                                            }
+                                        ],
+                                        # VALUES/AGGREGATION: Sum of "price"
+                                        "values": [
+                                            {
+                                                "summarizeFunction": "SUM",
+                                                "sourceColumnOffset": 2,
+                                                "name": "total gains par catégorie"
+                                            }
+                                        ],
+                                        "valueLayout": "HORIZONTAL"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    "fields": "pivotTable"
+                }
+            }
+        ]
+    }
+
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=tabId,
+        body=body
+    ).execute()
+
+    print("Tableau croisé dynamique total gains par catégorie créer")
+
+
 if __name__ == "__main__" :
 
-
-
-# On réccupère les prestations déjà associés à des catégories
+# On récupère les prestations déjà associés à des catégories
     categories={}
     with open('SavedCateg.txt', 'r+') as file:
         fileContent = [line.replace('\n',"") for line in file.readlines()]
@@ -382,39 +539,13 @@ if __name__ == "__main__" :
     path = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
 
     #On crée le tableau associé aux données du json en entrée
-    nom, NumberOfLines = creer_donnee_brut(path,categories)
-    id = importer_sur_le_drive(nom)
-    sheetId = nvOnglet(id)
-    creerTableauDyn(id, sheetId, NumberOfLines)
+    nom = creer_donnee_brut(path,categories)
+    NumberOfLines = into_wb(nom)
+    id1 = importer_sur_le_drive(nom)
+    creer_analyse(id1, NumberOfLines)
 
-    #On crée le tableau associé à l'ensemble des anciennes données et des nouvelles
-
-    with open('fullData.json', 'r') as file:
-        content = file.read()
-    SavedData = json.loads(content)
-
-    with open(path, 'r') as file:
-        content = file.read()
-    NewData = json.loads(content)
-
-    #   On vérifie que ces données ne sont pas déjà enregistrées dans fullData
-
-    if NewData["fiscal_receipts"][0] in SavedData["fiscal_receipts"]:
-        print("Ces données sont déjà enregistrées dans fullData !")
-
-
-    else:
-        # On modifie le json enregistré
-        for transaction in NewData["fiscal_receipts"]:
-            SavedData["fiscal_receipts"].append(transaction)
-
-        with open('fullData.json', 'w') as f:
-            json.dump(SavedData, f)
-
-    #   On ajoute au drive le nouveau json
-    nom, NumberOfLines = creer_donnee_brut("fullData.json")
-    id = importer_sur_le_drive(nom)
-    sheetId = nvOnglet(id)
-    creerTableauDyn(id, sheetId, NumberOfLines)
+    into_wb("fullData")
+    id2 = importer_sur_le_drive("fullData")
+    creer_analyse(id2, NumberOfLines)
 
 
