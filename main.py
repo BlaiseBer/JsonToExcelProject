@@ -10,7 +10,7 @@ from googleapiclient.http import MediaFileUpload
 from googleapiclient.discovery import build
 import time
 from groq import Groq
-
+from groq import Groq
 def creer_donnee_brut(path,categories):
 
     nom_output = os.path.splitext(os.path.basename(path))
@@ -305,7 +305,7 @@ def creerTableauDyn(id, sheetId, NumberOfLines):
                                         # COLUMN LAYOUT: Group by "Transaction" (Column Index 6)
                                         "columns": [
                                             {
-                                                "sourceColumnOffset": 5,
+                                                "sourceColumnOffset": 4,
                                                 "sortOrder": "ASCENDING",
                                                 "showTotals": True
                                             }
@@ -366,6 +366,8 @@ def nvOnglet(id):
 
 if __name__ == "__main__" :
 
+
+
 # On réccupère les prestations déjà associés à des catégories
     categories={}
     with open('SavedCateg.txt', 'r+') as file:
@@ -400,7 +402,7 @@ if __name__ == "__main__" :
     if NewData["fiscal_receipts"][0] in SavedData["fiscal_receipts"]:
         print("Ces données sont déjà enregistrées dans fullData !")
 
-    
+
     else:
         # On modifie le json enregistré
         for transaction in NewData["fiscal_receipts"]:
@@ -414,4 +416,5 @@ if __name__ == "__main__" :
     id = importer_sur_le_drive(nom)
     sheetId = nvOnglet(id)
     creerTableauDyn(id, sheetId, NumberOfLines)
+
 
