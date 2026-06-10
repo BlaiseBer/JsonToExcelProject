@@ -143,7 +143,6 @@ def get_credentials():
             token.write(creds.to_json())
     return creds
 
-
 def nvOnglet(id, nom):
     creds = get_credentials()
     service = build('sheets', 'v4', credentials=creds)
@@ -191,7 +190,6 @@ def creer_analyse(tabId, NumberOfLines):
     tableau_dyn_nombre_prestation_mots_cles(creds, tabId, source_sheet_id, sheetId3, NumberOfLines)
     tableau_dyn_total_gains_categorie(creds, tabId, source_sheet_id, sheetId4, NumberOfLines)
 
-
 def creer_parametres(id, sheetId):
     creds = get_credentials()
 
@@ -205,7 +203,7 @@ def creer_parametres(id, sheetId):
 
         result = service.spreadsheets().values().update(
             spreadsheetId=id,
-            range_name = "Paramètres!B1:L2",
+            range = "Paramètres!B1:L2",
             valueInputOption="RAW",
             body=body
         ).execute()
@@ -267,7 +265,7 @@ def tableau_dyn_total_gains_prestations(creds, tabId,source_sheetId, sheetId, Nu
                             ]
                         }
                     ],
-                    "fields": "Total des gains par prestations"
+                    "fields": "pivotTable"
                 }
             }
         ]
@@ -335,7 +333,7 @@ def tableau_dyn_nombre_prestation_mots_cles(creds, tabId,source_sheetId, sheetId
                             ]
                         }
                     ],
-                    "fields": "Nombre de préstations par mots-clés"
+                    "fields": "pivotTable"
                 }
             }
         ]
@@ -403,7 +401,7 @@ def tableau_dyn_total_gains_categorie(creds, tabId, source_sheetId, sheetId, Num
                             ]
                         }
                     ],
-                    "fields": "total gains par catégorie"
+                    "fields": "pivotTable"
                 }
             }
         ]
@@ -425,7 +423,7 @@ if __name__ == "__main__" :
     #On crée les tableaux associés aux données du json en entrée
     nom, NumberOfLines = creer_excel(path)
     id = importer_sur_le_drive(nom)
-
+    creer_analyse(id, NumberOfLines)
 
     """"
     #On crée le tableau associé à l'ensemble des anciennes données et des nouvelles
