@@ -8,10 +8,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.discovery import build
-import time
 from groq import Groq
-from pandas.core.dtypes.common import is_categorical_dtype
-
 
 def creer_donnee_brut(path,categories):
     nom_output = os.path.splitext(os.path.basename(path))[0]
@@ -158,36 +155,6 @@ def add_categ (prest,categories):
         return aux(prest, categories)
     else:
         return IsCategorized
-
-"""
-def add_generated_col(categories) :
-    l=[]
-    allcontent=[]
-    with open("data.csv", "r+") as csv:
-        file=[x.replace('\n','').split(';') for x in csv.readlines()]
-        nc=len(file[0])
-        for x in file :
-            if len(x)!=nc:
-                l.append(x)
-            else :
-                allcontent.append(x)
-
-    for i in range(len(l)):
-        IsCategorized = False
-        for categ in categories:
-            if l[i][0] in categories[categ]:
-                l[i]=[l[i][0],categ]+l[i][1:]
-                IsCategorized = True
-                break
-        if not(IsCategorized):
-            l[i] = [l[i][0], add_categ(l[i][0],categories)] + l[i][1:]
-
-        with open("data.csv", "w+") as csv:
-            for x in allcontent :
-                csv.write(str(x)[1:-1]+"\n")
-            for x in l :
-                csv.write(str(x)[1:-1]+"\n")
-"""
 
 def into_wb(nom):
     NumberOfLines = 0
