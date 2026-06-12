@@ -10,9 +10,11 @@ from googleapiclient.http import MediaFileUpload
 from googleapiclient.discovery import build
 import time
 from groq import Groq
-def creer_donnee_brut(path,categories):
+from pandas.core.dtypes.common import is_categorical_dtype
 
-    nom_output = os.path.splitext(os.path.basename(path))
+
+def creer_donnee_brut(path,categories):
+    nom_output = os.path.splitext(os.path.basename(path))[0]
     l=[]
     with open(path, 'r') as file:
         content = file.read()
@@ -23,7 +25,6 @@ def creer_donnee_brut(path,categories):
     for transaction in obj["fiscal_receipts"]:
         list = transaction["line_data"]
         pay_data = transaction["payment_data"]
-        #cashier_name = transaction["cashier"]["full_name"]
         if transaction["customer"] is not None:
             client_id = transaction["customer"]["bci_id"]
         else:
@@ -76,12 +77,12 @@ def creer_donnee_brut(path,categories):
                 NumberOfLines+=1
 
     fullcsv = open("fullData.csv", "a+")
-    csv = open("data.csv", "r+")
+    csv = open(nom_output + ".csv", "w+")
     for x in l:
-        s=x[0]
-        s+= add_categ(x[0], categories)
-        for z in range(1, len(x)):
-            s+=str(z).replace(',','')+";"
+        s=x[0] + ";"
+        s+= add_categ(x[0], categories) + ";"
+        for i in range(1, len(x)):
+            s+=str(x[i]).replace(',','')+";"
         fullcsv.write(s[:-1]+"\n")
         csv.write(s[:-1] + "\n")
     return nom_output
@@ -90,7 +91,7 @@ def groq(description,categories):
     # Le prompt système dicte les règles absolues à l'IA
     with open("grokapikey.txt","r") as f:
         contenu = f.readlines()
-    os.environ["GROQ_API_KEY"] = contenu
+    os.environ["GROQ_API_KEY"] = contenu[0]
     client = Groq()
     prompt_systeme = f"""Tu es un expert en classification pour un centre de bien-être.
     Tu dois classer la prestation fournie par l'utilisateur dans EXACTEMENT UNE des catégories suivantes :
@@ -121,30 +122,42 @@ def groq(description,categories):
         return "Erreur"
 
 def add_categ (prest,categories):
-    result=[]
-    for i in range(10):
-        gc=groq(prest,categories)
-        while not(gc in categories.keys()):
-            gc=groq(prest,categories)
-            print('error')
-            print(gc)
-        print(gc)
-        result.append(gc)
-    nb=0
-    indice=0
-    for i,x in enumerate(result):
-        if result.count(x)>=nb :
-            indice=i
-    categories[result[indice]].append(prest)
-    print("_"*100+str(result[indice]))
-    with open("SavedCateg.txt", "w+") as text:
-        for x in categories:
-            text.write(f"{x}$")
-            for j in range(len(categories[x])-1):
-                text.write(f"{categories[x][j]}£")
-            text.write(f"{categories[x][-1]}\n")
 
-    return result[indice]
+    def aux(prest, categories):
+        result=[]
+        for i in range(10):
+            gc=groq(prest,categories)
+            while not(gc in categories.keys()):
+                gc=groq(prest,categories)
+                print('error')
+                print(gc)
+            print(gc)
+            result.append(gc)
+        nb=0
+        indice=0
+        for i,x in enumerate(result):
+            if result.count(x)>=nb :
+                indice=i
+        categories[result[indice]].append(prest)
+        print("_"*100+str(result[indice]))
+        with open("SavedCateg.txt", "w+") as text:
+            for x in categories:
+                text.write(f"{x}$")
+                for j in range(len(categories[x])-1):
+                    text.write(f"{categories[x][j]}£")
+                text.write(f"{categories[x][-1]}\n")
+        return result[indice]
+
+    IsCategorized = ''
+    for categ in categories.keys():
+        if prest in categories[categ]:
+            IsCategorized = categ
+            break
+
+    if IsCategorized == '':
+        return aux(prest, categories)
+    else:
+        return IsCategorized
 
 """
 def add_generated_col(categories) :
@@ -185,7 +198,8 @@ def into_wb(nom):
     ws.append(["Nom","Catégorie", "Prix", "Moyen de paiement", "Date", "Id_client", "Type de transaction", "Commentaire"])
     for x in lignes:
         NumberOfLines+=1
-        ws.append(x)
+        L = x[:2] + [float(x[2])] + x[3:]
+        ws.append(L)
     ws.auto_filter.ref = f"A1:G{ws.max_row}"
     wb.save(nom + ".xlsx")
     return NumberOfLines
@@ -202,7 +216,7 @@ def importer_sur_le_drive(nom):
 
     # Prepare the media payload
     media = MediaFileUpload(
-        "data.xlsx",
+        nom + ".xlsx",
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         resumable=True
     )
@@ -218,7 +232,6 @@ def importer_sur_le_drive(nom):
 
         print("Uploaded to Google Drive")
         print(f"File URL: {uploaded_file.get('webViewLink')}")
-        os.remove("data.xlsx")
         return uploaded_file.get('id')
 
     except Exception as e:
@@ -282,7 +295,7 @@ def creer_analyse(tabId, NumberOfLines):
     service = build('sheets', 'v4', credentials=creds)
 
     # On demande à l'API de nous donner les métadonnées des feuilles du fichier
-    spreadsheet_metadata = service.spreadsheets().get(spreadsheetId=id).execute()
+    spreadsheet_metadata = service.spreadsheets().get(spreadsheetId=tabId).execute()
     sheets = spreadsheet_metadata.get('sheets', [])
 
     # on récupère l'id de la première feuille
@@ -363,7 +376,7 @@ def tableau_dyn_total_gains_prestations(creds, tabId,source_sheetId, sheetId, Nu
                                         "values": [
                                             {
                                                 "summarizeFunction": "SUM",
-                                                "sourceColumnOffset": 1,
+                                                "sourceColumnOffset": 2,
                                                 "name": "Ventes totales"
                                             }
                                         ],
@@ -536,16 +549,22 @@ if __name__ == "__main__" :
 
     root = tk.Tk()
     root.withdraw()
-    path = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
+    paths = filedialog.askopenfilenames(filetypes=[("JSON", "*.json")])
 
-    #On crée le tableau associé aux données du json en entrée
-    nom = creer_donnee_brut(path,categories)
-    NumberOfLines = into_wb(nom)
-    id1 = importer_sur_le_drive(nom)
-    creer_analyse(id1, NumberOfLines)
+    for path in paths:
+        #On crée le tableau associé aux données du json en entrée
+        nom = creer_donnee_brut(path,categories)
+        NumberOfLines = into_wb(nom)
+        id1 = importer_sur_le_drive(nom)
+        creer_analyse(id1, NumberOfLines)
 
-    into_wb("fullData")
-    id2 = importer_sur_le_drive("fullData")
-    creer_analyse(id2, NumberOfLines)
+        os.remove(nom+".xlsx")
+        os.remove(nom+".csv")
 
+        #On crée la data complète
+        into_wb("fullData")
+        id2 = importer_sur_le_drive("fullData")
+        creer_analyse(id2, NumberOfLines)
+        print("importation de " + nom + " terminée")
 
+        os.remove("fullData.xlsx")
